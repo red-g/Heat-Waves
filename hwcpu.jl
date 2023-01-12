@@ -1,10 +1,6 @@
 include("train.jl")
-include("model.jl")
 
-const hwpred = tryload("model")
-const training, testing = proportionScores(0.9)
-const testpreds = scoresToPredictions(testing)
-const coredata = CoreData(hwpred, training, testpreds)
+const coredata = CoreData(ModelInfo("model"), OnCPU)
 
 save(model) = @save "model.bson" model
 

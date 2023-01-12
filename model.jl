@@ -11,3 +11,11 @@ function tryload(path::String, name=Symbol(path))
         Model()
     end
 end
+
+struct ModelInfo
+    path::String
+    name::Symbol
+end
+
+ModelInfo(path::String) = ModelInfo(path, Symbol(path))
+BSON.load(mi::ModelInfo) = tryload(mi.path, mi.name)

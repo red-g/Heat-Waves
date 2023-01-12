@@ -4,6 +4,7 @@ using Accessors
 
 include("data.jl")
 include("loss.jl")
+include("model.jl")
 
 struct CoreData{M,D,T}
     model::M
@@ -12,6 +13,25 @@ struct CoreData{M,D,T}
 end
 
 testloss(cd::CoreData) = testloss(cd.model, cd.data, cd.test)
+
+abstract type RunLocation end
+struct OnGPU <: RunLocation end
+struct OnCPU <: RunLocation end
+
+#in order to automate save function generation from model info, this will need to be a macro
+function CoreData(mi::ModelInfo, ::Type{OnCPU})
+    model = load(mi)
+    training, testing = proportionScores(0.9)
+    testpreds = scoresToPredictions(testing)
+    CoreData(model, training, testpreds)
+end
+
+function CoreData(mi::ModelInfo, ::Type{OnGPU})
+    model = load(mi) |> gpu
+    training, testing = proportionScores(0.9) .|> gpu
+    testpreds = scoresToPredictions(testing)
+    CoreData(model, training, testpreds)
+end
 
 abstract type HyperParameters end
 

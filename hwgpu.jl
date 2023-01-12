@@ -1,10 +1,6 @@
 include("train.jl")
-include("model.jl")
 
-const hwpred = tryload("model") |> gpu
-const training, testing = proportionScores(0.9) .|> gpu
-const testpreds = scoresToPredictions(testing)
-const coredata = CoreData(hwpred, training, testpreds)
+const coredata = CoreData(ModelInfo("model"), OnGPU)
 
 function save(m)
     model = cpu(m)
