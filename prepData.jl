@@ -25,6 +25,8 @@ function dateTempMatrixFrom(cols)
 end
 
 const QuadYear = (4 * 365) + 1
+const DistFromQYCenter = (QuadYear - 1) ÷ 2
+const QYCenter = DistFromQYCenter + 1
 
 function meanYearTemps(temps)
     meanTemps = Matrix{Float32}(undef, QuadYear, TempCols)
@@ -43,7 +45,7 @@ function calcResiduals(temps, meanTemps)
     residuals
 end
 
-function heatScore(temps, meanTemps)
+function heatScores(temps, meanTemps)
     scores = Matrix{Float32}(undef, TempRows, TempCols)
     residuals = calcResiduals(temps, meanTemps)
     for day in 1:TempRows
@@ -56,51 +58,23 @@ end
 
 const Temps = dateTempMatrixFrom(Columns)
 const MeanTemps = meanYearTemps(Temps)
-const HeatScores = heatScore(Temps, MeanTemps)
+const HeatScores = heatScores(Temps, MeanTemps)
 
 @save "hwscores.bson" HeatScores
-
-#weighted mean
 
 function weightedmean(data, point)
     weights = 1:length(data) .|> p -> 1 / (abs(point - p) + 1)
     sum(data .* weights) / sum(weights)
-end#create dims options; look at how it is done in julia docs
-
-function weightedmean(data, point, dims)
 end
 
+#the idea behind a year mean is to create a less volatile daily mean, taking into account the other days around the target day
 function yearmeans(temps)
     ymeans = Matrix{Float32}(undef, TempRows, TempCols)
-    qyStart = 1
-    qyEnd = QuadYear
-    for day in 1:TempRows#make more efficient by iterating by year, not day
-        if day > qyEnd
-            qyStart = qyEnd + 1
-            qyEnd = qyStart + QuadYear - 1
-        end
-        qyOffset = day - qyStart
-        qyTemps = temps[qyStart:qyEnd, :]
-        ymeans[day, :] = weightedmean.(eachcol(qyTemps), qyOffset)
+    for day in 1:TempRows
+        qs = max(1, day - DistFromQYCenter)
+        qe = min(TempRows, days + DistFromQYCenter)
+        qtemps = temps[qs:qe, :]
+        ymeans[day, :] = weightedmean.(eachcol(qtemps), QYCenter)
     end
     ymeans
-end
-
-struct Every{N}
-    n::N
-end
-
-Base.iterate(e::Every, state=0) = (state ÷ e.n, state + 1)
-
-Base.IteratorSize(::Type{<:Every}) = Base.IsInfinite()
-
-function yearmeans(temps)
-    ymeans = Matrix{Float32}(undef, TempRows, TempCols)
-    for (qy, day) in zip(Every(QuadYear), 1:TempRows)
-        qs = (qy * QuadYear) + 1#the length of the list is not a perfect multiple
-        qe = qs + QuadYear
-        qtemps = temps[qs:qe, :]
-        qoffset = day - qs
-        ymeans[day, :] = weightedmean.(eachcol(qtemps), qoffset)
-    end
-end
+end#this should work fine, but the mean temps at the final and starting years could be a little off
