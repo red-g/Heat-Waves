@@ -52,9 +52,9 @@ function heatScores(temps, meanTemps)
         weights = day:-1:1
         residualsₜ = residuals[1:day, :] |> eachcol
         scores[day, :] = residualsₜ .|> (col -> col ./ weights) .|> sum .|> σ
-    end
+    end#sigmoid may be a mistake: it factors in both hot and cold waves.
     scores
-end
+end#to only measurement heatwaves: cap every score < 0, sub the mean
 
 const Temps = dateTempMatrixFrom(Columns)
 const MeanTemps = meanYearTemps(Temps)
