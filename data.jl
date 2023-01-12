@@ -11,6 +11,7 @@ Base.length(r::RowsIter) = size(r.matrix, 1)
 Base.size(r::RowsIter) = (length(r),)
 Base.lastindex(r::RowsIter) = length(r)
 Base.iterate(r::RowsIter, i=1) = i > length(r) ? nothing : (r[i], i + 1)
+Flux.gpu(r::RowsIter) = RowsIter(Flux.gpu(r.matrix))
 
 #loads randomized batches, ordered so that context is continuous
 struct SequentialLoader{D,B}
