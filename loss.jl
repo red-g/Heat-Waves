@@ -15,7 +15,7 @@ loss(m, d) = sum(dᵢ -> loss(m, dᵢ...), d) / length(d)
 #For gradient descent——prediction pairs
 onedayloss(m, x, y) = Flux.mse(m(x), y)
 
-onedayloss(m, d) = sum(dᵢ -> loss(m, dᵢ...), d) / length(d)
+onedayloss(m, d) = sum(dᵢ -> onedayloss(m, dᵢ...), d) / length(d)
 
 function testloss(m, context, preds)
     Flux.reset!(m)

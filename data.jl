@@ -40,10 +40,10 @@ end
 
 Base.IteratorSize(::Type{<:SequentialLoader}) = Base.IsInfinite()
 
-function proportionScores(trainPercent)
+function proportionScores(trainPortion=0.9)
     @load "hwscores.bson" HeatScores
     scores = RowsIter(HeatScores)
-    cutoff = round(Int, length(scores) * trainPercent)
+    cutoff = round(Int, length(scores) * trainPortion)
     train = scores[1:cutoff]
     test = scores[(cutoff+1):end]
     train, test

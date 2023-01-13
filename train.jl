@@ -1,72 +1,99 @@
 using Flux
 using BSON: @save
+import Flux.Optimise: AbstractOptimiser
 using Accessors
 
 include("data.jl")
 include("loss.jl")
 include("model.jl")
 
-struct CoreData{M,D,T}
-    model::M
-    data::D
-    test::T
-end
-
-testloss(cd::CoreData) = testloss(cd.model, cd.data, cd.test)
-
 abstract type RunLocation end
 struct OnGPU <: RunLocation end
 struct OnCPU <: RunLocation end
 
-#in order to automate save function generation from model info, this will need to be a macro
-function CoreData(mi::ModelInfo, ::Type{OnCPU})
-    model = load(mi)
-    training, testing = proportionScores(0.9)
-    testpreds = scoresToPredictions(testing)
-    CoreData(model, training, testpreds)
+abstract type DescentMode end
+struct StochasticDescent{I<:Integer} <: DescentMode
+    batchsize::I
+end
+struct SmoothDescent <: DescentMode end
+
+struct TrainParams::{L, T, D}
+    loss::L
+    testloss::T
+    dataloader::D
 end
 
-function CoreData(mi::ModelInfo, ::Type{OnGPU})
-    model = load(mi) |> gpu
-    training, testing = proportionScores(0.9) .|> gpu
-    testpreds = scoresToPredictions(testing)
-    CoreData(model, training, testpreds)
+function TrainParams(::SmoothDescent, training, testing)
+    loss = onedayloss
+    preds = scoresToPredictions(testing)
+    testloss = m -> testloss(m, training, preds)
+    dataloader = Iterators.repeated(scoresToPredictions(training))
+    TrainParams(loss, testloss, dataloader)
 end
 
-abstract type HyperParameters end
-
-struct StochasticDescent{B,E,O} <: HyperParameters
-    batchsize::B
-    updates::E
-    opt::O
+function TrainParams(s::StochasticDescent, training, testing)
+    loss = loss
+    preds = scoresToPredictions(testing)
+    testloss = m -> testloss(m, training, preds)
+    dataloader = SequentialLoader(training, s.batchsize)
+    TrainParams(loss, testloss, dataloader)
 end
 
-struct SmoothDescent{E,O} <: HyperParameters
-    updates::E
-    opt::O
+struct TrainState{L<:RunLocation,M,O,P}
+    model::M
+    optstate::O
+    path::P
 end
+TrainState(m, o::AbstractOptimiser, p, r) = TrainState{r}(m, Flux.setup(o, m), "$(p).bson")
 
-function train!(lf, cd, opt, sv)
-    println("Initial test loss: $(testloss(cd))")
-    optstate = Flux.setup(opt, cd.model)
-    for (i, b) in enumerate(cd.data)
-        (grad,) = Flux.gradient(m -> lf(m, b), cd.model)
-        Flux.update!(optstate, cd.model, grad)
-        println("Batch $(i). Test loss: $(testloss(cd))")
+save(path, model, optstate) = @save path model optstate
+
+save(ts::TrainState{OnCPU}) = save(ts.path, ts.model, ts.opstate)
+
+save(ts::TrainState{OnGPU}) = save(ts.path, cpu(ts.model), ts.opstate)
+
+function load(::Type{TrainState}, path, opt)
+    fullpath = "$(path).bson"
+    if isfile(fullpath)
+        @load ts.path model optstate
+        TrainState(model, opstate, path)
+    else
+        TrainState(Model(), opt, path)
     end
-    sv(cd.model)
 end
 
-#this is slower than traditional gradient descent, though it may produce better results when training does complete
-function train!(cd::CoreData, sd::StochasticDescent, sv)
-    d = Iterators.take(SequentialLoader(cd.data, sd.batchsize), sd.updates)
-    train!(loss, (@set cd.data = d), sd.opt, sv)
-end
-#train!(coredata, StochasticDescent(512, 1000, Descent(0.01)), save)
+load(::Type{TrainState{OnCPU}}, path, opt) = load(TrainState, path, opt)
 
-#while this is usually the slower, more memory intensive method, in this case it is actually the most efficient
-function train!(cd::CoreData, sd::SmoothDescent, sv)
-    d = Iterators.repeated(scoresToPredictions(cd.data), sd.updates)
-    train!(onedayloss, (@set cd.data = d), sd.opt, sv)
+function load(::Type{TrainState{OnGPU}}, path, opt)
+    cts = load(TrainState, path, opt)
+    @set cts.model = gpu(cts.model)
 end
-#gradientdescent(coredata, SmoothDescent(100, Descent(0.01)), save)
+
+struct TrainConfig{P<:TrainParams,S<:TrainState}
+    params::P
+    state::S
+end
+
+proportionScores(::Type{OnCPU}, args...) = proportionScores(args...)
+proportionScores(::Type{OnGPU}, args...) = gpu.(proportionScores(args...))
+
+function TrainConfig(dm, opt, path, c::Type{<:RunLocation})
+    training, testing = proportionScores(c)
+    params = TrainParams(dm, training, testing)
+    state = load(TrainState{c}, path, opt)
+    TrainConfig(params, state)
+end
+
+function train!((; params, state)::TrainConfig, updates)
+    println("Initial test loss: $(params.testloss(state.model))")
+    for (i, b) in enumerate(Iterators.take(params.dataloader, updates))
+        Flux.reset!(state.model)
+        (grad,) = Flux.gradient(m -> params.loss(m, b), state.model)
+        Flux.update!(state.optstate, state.model, grad)
+        println("Batch $(i). Test loss: $(params.testloss(model))")
+    end
+    save(state)
+end
+
+# const tc = TrainConfig(StochasticDescent(512), Descent(0.01), "trainstate", OnCPU)
+# train!(tc, 1000)

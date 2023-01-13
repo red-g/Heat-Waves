@@ -36,6 +36,23 @@ function meanYearTemps(temps)
     meanTemps
 end
 
+function weightedmean(data, point)
+    weights = 1:length(data) .|> p -> 1 / (abs(point - p) + 1)
+    sum(data .* weights) / sum(weights)
+end
+
+#the idea behind a year mean is to create a less volatile daily mean, taking into account the other days around the target day
+function softTemps(temps)
+    ymeans = Matrix{Float32}(undef, TempRows, TempCols)
+    for day in 1:TempRows
+        qs = max(1, day - DistFromQYCenter)
+        qe = min(TempRows, day + DistFromQYCenter)
+        qtemps = temps[qs:qe, :]
+        ymeans[day, :] = weightedmean.(eachcol(qtemps), QYCenter)
+    end
+    ymeans
+end#this should work fine, but the mean temps at the final and starting years could be a little off
+
 function calcResiduals(temps, meanTemps)
     residuals = similar(temps)
     for day in 1:TempRows
@@ -57,24 +74,8 @@ function heatScores(temps, meanTemps)
 end#to only measurement heatwaves: cap every score < 0, sub the mean
 
 const Temps = dateTempMatrixFrom(Columns)
+const SoftTemps = softTemps(Temps)
 const MeanTemps = meanYearTemps(Temps)
 const HeatScores = heatScores(Temps, MeanTemps)
 
 @save "hwscores.bson" HeatScores
-
-function weightedmean(data, point)
-    weights = 1:length(data) .|> p -> 1 / (abs(point - p) + 1)
-    sum(data .* weights) / sum(weights)
-end
-
-#the idea behind a year mean is to create a less volatile daily mean, taking into account the other days around the target day
-function yearmeans(temps)
-    ymeans = Matrix{Float32}(undef, TempRows, TempCols)
-    for day in 1:TempRows
-        qs = max(1, day - DistFromQYCenter)
-        qe = min(TempRows, days + DistFromQYCenter)
-        qtemps = temps[qs:qe, :]
-        ymeans[day, :] = weightedmean.(eachcol(qtemps), QYCenter)
-    end
-    ymeans
-end#this should work fine, but the mean temps at the final and starting years could be a little off
