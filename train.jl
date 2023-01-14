@@ -5,7 +5,6 @@ using Accessors
 
 include("data.jl")
 include("loss.jl")
-include("model.jl")
 
 abstract type RunLocation end
 struct OnGPU <: RunLocation end
@@ -52,20 +51,22 @@ save(ts::TrainState{OnCPU}) = save(ts.path, ts.model, ts.opstate)
 
 save(ts::TrainState{OnGPU}) = save(ts.path, cpu(ts.model), ts.opstate)
 
-function load(::Type{TrainState}, path, opt)
+function load(::Type{TrainState}, path, M, opt)
     fullpath = "$(path).bson"
     if isfile(fullpath)
+        println("Loading train state from $(fullpath)")
         @load ts.path model optstate
         TrainState(model, opstate, path)
     else
-        TrainState(Model(), opt, path)
+        println("Initializing train state")
+        TrainState(M(), opt, path)
     end
 end
 
-load(::Type{TrainState{OnCPU}}, path, opt) = load(TrainState, path, opt)
+load(::Type{TrainState{OnCPU}}, path, M, opt) = load(TrainState, path, M, opt)
 
-function load(::Type{TrainState{OnGPU}}, path, opt)
-    cts = load(TrainState, path, opt)
+function load(::Type{TrainState{OnGPU}}, path, M, opt)
+    cts = load(TrainState, path, M, opt)
     @set cts.model = gpu(cts.model)
 end
 
@@ -77,10 +78,10 @@ end
 proportionScores(::Type{OnCPU}, args...) = proportionScores(args...)
 proportionScores(::Type{OnGPU}, args...) = gpu.(proportionScores(args...))
 
-function TrainConfig(dm, opt, path, c::Type{<:RunLocation})
+function TrainConfig(dm, opt, M, path, c::Type{<:RunLocation})
     training, testing = proportionScores(c)
     params = TrainParams(dm, training, testing)
-    state = load(TrainState{c}, path, opt)
+    state = load(TrainState{c}, path, M, opt)
     TrainConfig(params, state)
 end
 
@@ -94,6 +95,3 @@ function train!((; params, state)::TrainConfig, updates)
     end
     save(state)
 end
-
-# const tc = TrainConfig(StochasticDescent(512), Descent(0.01), "trainstate", OnCPU)
-# train!(tc, 1000)

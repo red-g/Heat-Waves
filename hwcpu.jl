@@ -1,7 +1,7 @@
 include("train.jl")
 
-const coredata = CoreData(ModelInfo("model"), OnCPU)
+Model() = Chain(Dense(1000 => 256, swish), LSTM(256 => 512), Dense(512 => 1000, σ))
 
-save(model) = @save "model.bson" model
+const tc = TrainConfig(SmoothDescent(), Descent(0.01), Model, "trainstate", OnCPU)
 
-train!(coredata, SmoothDescent(100, Descent(0.01)), save)
+train!(tc, 100)

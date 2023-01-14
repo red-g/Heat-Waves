@@ -1,10 +1,7 @@
 include("train.jl")
 
-const coredata = CoreData(ModelInfo("model"), OnGPU)
+Model() = Chain(Dense(RowSize => 512, swish), LSTM(512 => 2048), Dense(2048 => 1024, swish), Dense(1024 => RowSize, σ))
 
-function save(m)
-    model = cpu(m)
-    @save "model.bson" model
-end
+const tc = TrainConfig(SmoothDescent(), Descent(0.01), Model, "trainstate", OnGPU)
 
-train!(coredata, SmoothDescent(100, Descent(0.01)), save)
+train!(tc, 100)

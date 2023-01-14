@@ -50,3 +50,5 @@ function proportionScores(trainPortion=0.9)
 end
 
 scoresToPredictions(scores, days=1) = zip(scores, Iterators.drop(scores, days))
+
+const CityNum = 1000
