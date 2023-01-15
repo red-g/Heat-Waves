@@ -11,11 +11,12 @@ abstract type RunLocation end
 struct OnGPU <: RunLocation end
 struct OnCPU <: RunLocation end
 
-moveto(::Type{OnGPU}, v) = gpu(v)
-moveto(::Type{OnCPU}, v) = cpu(v)
+moveto(rl, v) = _moveto(rl, v)
+_moveto(::Type{OnGPU}, v) = gpu(v)
+_moveto(::Type{OnCPU}, v) = cpu(v)
 
 abstract type DescentMode end
-struct StochasticDescent{I<:Integer} <: DescentMode
+struct StochasticDescent{I<:Integer,E,A} <: DescentMode
     batchsize::I
     test::E
     train::A
@@ -26,7 +27,7 @@ loss(::StochasticDescent, m, b) = loss(m, b)
 data(s::StochasticDescent) = SequentialLoader(s.train, s.batchsize)
 testloss(::StochasticDescent, m) = testloss(m, s.train, scoresToPredictions(s.test))
 
-struct SmoothDescent <: DescentMode
+struct SmoothDescent{E,A} <: DescentMode
     test::E
     train::A
 end
