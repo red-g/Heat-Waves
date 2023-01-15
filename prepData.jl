@@ -51,7 +51,9 @@ function softTemps(temps)
         ymeans[day, :] = weightedmean.(eachcol(qtemps), QYCenter)
     end
     ymeans
-end#this should work fine, but the mean temps at the final and starting years could be a little off
+end
+#this should work fine, but the mean temps at the final and starting years could be a little off
+#to prevent reliance on future times, the soft temps could also be calculated just looking at the past QY of temperatures
 
 function calcResiduals(temps, meanTemps)
     residuals = similar(temps)

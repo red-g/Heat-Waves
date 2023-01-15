@@ -1,4 +1,5 @@
 using Flux
+import Flux: setup
 using BSON: @save
 import Flux.Optimise: AbstractOptimiser
 using Accessors
@@ -10,88 +11,72 @@ abstract type RunLocation end
 struct OnGPU <: RunLocation end
 struct OnCPU <: RunLocation end
 
+moveto(::Type{OnGPU}, v) = gpu(v)
+moveto(::Type{OnCPU}, v) = cpu(v)
+
 abstract type DescentMode end
 struct StochasticDescent{I<:Integer} <: DescentMode
     batchsize::I
+    test::E
+    train::A
 end
-struct SmoothDescent <: DescentMode end
+StochasticDescent(batchsize) = StochasticDescent(batchsize, proportionScores()...)
+moveto(rl, dm::StochasticDescent) = StochasticDescent(dm.batchsize, moveto(rl, dm.test), moveto(rl, dm.train))
+loss(::StochasticDescent, m, b) = loss(m, b)
+data(s::StochasticDescent) = SequentialLoader(s.train, s.batchsize)
+testloss(::StochasticDescent, m) = testloss(m, s.train, scoresToPredictions(s.test))
 
-struct TrainParams::{L, T, D}
-    loss::L
-    testloss::T
-    dataloader::D
+struct SmoothDescent <: DescentMode
+    test::E
+    train::A
 end
+SmoothDescent() = SmoothDescent(proportionScores()...)
+moveto(rl, dm::SmoothDescent) = SmoothDescent(moveto(rl, dm.test), moveto(rl, dm.train))
+loss(::SmoothDescent, m, b) = onedayloss(m, b)
+data(s::SmoothDescent) = Iterators.repeated(scoresToPredictions(s.train))
+testloss(::SmoothDescent, m) = testloss(m, s.train, scoresToPredictions(s.test))
 
-function TrainParams(::SmoothDescent, training, testing)
-    loss = onedayloss
-    preds = scoresToPredictions(testing)
-    testloss = m -> testloss(m, training, preds)
-    dataloader = Iterators.repeated(scoresToPredictions(training))
-    TrainParams(loss, testloss, dataloader)
-end
-
-function TrainParams(s::StochasticDescent, training, testing)
-    loss = loss
-    preds = scoresToPredictions(testing)
-    testloss = m -> testloss(m, training, preds)
-    dataloader = SequentialLoader(training, s.batchsize)
-    TrainParams(loss, testloss, dataloader)
-end
-
-struct TrainState{L<:RunLocation,M,O,P}
-    model::M
-    optstate::O
+struct TrainState{P,M,O}
     path::P
+    model::M
+    opt::O
 end
-TrainState(m, o::AbstractOptimiser, p, r) = TrainState{r}(m, Flux.setup(o, m), "$(p).bson")
 
-save(path, model, optstate) = @save path model optstate
+Flux.setup(ts::TrainState) = setup(ts.opt, ts.model)
+moveto(rl, ts::TrainState) = TrainState(ts.path, moveto(rl, ts.model), ts.opt)
 
-save(ts::TrainState{OnCPU}) = save(ts.path, ts.model, ts.opstate)
+function save(ts::TrainState)
+    (; model, opt) = moveto(OnCPU, ts)
+    @save ts.path model opt
+end
 
-save(ts::TrainState{OnGPU}) = save(ts.path, cpu(ts.model), ts.opstate)
-
-function load(::Type{TrainState}, path, M, opt)
+function load(::Type{TrainState}, path, defM, defopt)
     fullpath = "$(path).bson"
     if isfile(fullpath)
         println("Loading train state from $(fullpath)")
-        @load ts.path model optstate
-        TrainState(model, opstate, path)
+        @load fullpath model opt
+        TrainState(fullpath, model, opt)
     else
         println("Initializing train state")
-        TrainState(M(), opt, path)
+        TrainState(fullpath, defM(), defopt)
     end
 end
 
-load(::Type{TrainState{OnCPU}}, path, M, opt) = load(TrainState, path, M, opt)
-
-function load(::Type{TrainState{OnGPU}}, path, M, opt)
-    cts = load(TrainState, path, M, opt)
-    @set cts.model = gpu(cts.model)
+struct TrainConfig{D<:DescentMode,S<:TrainState}
+    descmode::D#how the model will learn——does not change
+    state::S#the actual information of the model & opt——changes
 end
 
-struct TrainConfig{P<:TrainParams,S<:TrainState}
-    params::P
-    state::S
-end
+moveto(rl, tc::TrainConfig) = TrainConfig(moveto(rl, tc.descmode), moveto(rl, tc.state))
 
-proportionScores(::Type{OnCPU}, args...) = proportionScores(args...)
-proportionScores(::Type{OnGPU}, args...) = gpu.(proportionScores(args...))
-
-function TrainConfig(dm, opt, M, path, c::Type{<:RunLocation})
-    training, testing = proportionScores(c)
-    params = TrainParams(dm, training, testing)
-    state = load(TrainState{c}, path, M, opt)
-    TrainConfig(params, state)
-end
-
-function train!((; params, state)::TrainConfig, updates)
-    println("Initial test loss: $(params.testloss(state.model))")
-    for (i, b) in enumerate(Iterators.take(params.dataloader, updates))
+function train!((; descmode, state)::TrainConfig, updates)
+    println("Initial test loss: $(testloss(descmode, state.model))")
+    optstate = setup(state)
+    for (i, b) in enumerate(Iterators.take(data(descmode), updates))
         Flux.reset!(state.model)
-        (grad,) = Flux.gradient(m -> params.loss(m, b), state.model)
-        Flux.update!(state.optstate, state.model, grad)
-        println("Batch $(i). Test loss: $(params.testloss(model))")
+        (grad,) = Flux.gradient(m -> loss(descmode, m, b), state.model)
+        Flux.update!(optstate, state.model, grad)
+        println("Batch $(i). Test loss: $(testloss(descmode, state.model))")
     end
     save(state)
 end
