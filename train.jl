@@ -17,6 +17,9 @@ _moveto(::Type{OnGPU}, v) = gpu(v)
 _moveto(::Type{OnCPU}, v) = cpu(v)
 
 abstract type DescentMode end
+
+# Normally the more performant option, as it uses batch updates; in this case it is actually slower than SmoothDescent 
+# since predictions are sequential. It may still yield better results, however
 struct StochasticDescent{I<:Integer,E,A} <: DescentMode
     batchsize::I
     test::E
@@ -28,6 +31,8 @@ loss(::StochasticDescent, m, b) = loss(m, b)
 data(s::StochasticDescent) = SequentialLoader(s.train, s.batchsize)
 testloss(::StochasticDescent, m) = testloss(m, s.train, scoresToPredictions(s.test))
 
+# Uses all samples each step; more performant than normal because predictions are sequential: 
+# it is only marginally more work to compute the gradients of all instead of some
 struct SmoothDescent{E,A} <: DescentMode
     test::E
     train::A
