@@ -12,6 +12,7 @@ struct OnGPU <: RunLocation end
 struct OnCPU <: RunLocation end
 
 moveto(rl, v) = _moveto(rl, v)
+moveto(rl, v...) = moveto.(rl, v...)
 _moveto(::Type{OnGPU}, v) = gpu(v)
 _moveto(::Type{OnCPU}, v) = cpu(v)
 
@@ -35,7 +36,7 @@ SmoothDescent() = SmoothDescent(proportionScores()...)
 moveto(rl, dm::SmoothDescent) = SmoothDescent(moveto(rl, dm.test), moveto(rl, dm.train))
 loss(::SmoothDescent, m, b) = onedayloss(m, b)
 data(s::SmoothDescent) = Iterators.repeated(scoresToPredictions(s.train))
-testloss(::SmoothDescent, m) = testloss(m, s.train, scoresToPredictions(s.test))
+testloss(s::SmoothDescent, m) = testloss(m, s.train, scoresToPredictions(s.test))
 
 struct TrainState{P,M,O}
     path::P
@@ -63,21 +64,14 @@ function load(::Type{TrainState}, path, defM, defopt)
     end
 end
 
-struct TrainConfig{D<:DescentMode,S<:TrainState}
-    descmode::D#how the model will learn——does not change
-    state::S#the actual information of the model & opt——changes
-end
-
-moveto(rl, tc::TrainConfig) = TrainConfig(moveto(rl, tc.descmode), moveto(rl, tc.state))
-
-function train!((; descmode, state)::TrainConfig, updates)
-    println("Initial test loss: $(testloss(descmode, state.model))")
-    optstate = setup(state)
-    for (i, b) in enumerate(Iterators.take(data(descmode), updates))
-        Flux.reset!(state.model)
-        (grad,) = Flux.gradient(m -> loss(descmode, m, b), state.model)
-        Flux.update!(optstate, state.model, grad)
-        println("Batch $(i). Test loss: $(testloss(descmode, state.model))")
+function train!((dm, ts), updates)
+    println("Initial test loss: $(testloss(dm, ts.model))")
+    optstate = setup(ts)
+    for (i, b) in enumerate(Iterators.take(data(dm), updates))
+        Flux.reset!(ts.model)
+        (grad,) = Flux.gradient(m -> loss(dm, m, b), ts.model)
+        Flux.update!(optstate, ts.model, grad)
+        println("Batch $(i). Test loss: $(testloss(dm, ts.model))")
     end
-    save(state)
+    save(ts)
 end

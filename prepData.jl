@@ -43,7 +43,7 @@ end
 
 #the idea behind a year mean is to create a less volatile daily mean, taking into account the other days around the target day
 function softTemps(temps)
-    ymeans = Matrix{Float32}(undef, TempRows, TempCols)
+    ymeans = similar(temps)
     for day in 1:TempRows
         qs = max(1, day - DistFromQYCenter)
         qe = min(TempRows, day + DistFromQYCenter)
@@ -52,6 +52,9 @@ function softTemps(temps)
     end
     ymeans
 end
+#error: qs:qe is not always of length QY; QYCenter is therefore not always the right index.
+#when the minimum is too low, the center index should be calculated from qe - qs - DistFromQYCenter
+#when the maximum is too high, the center index is just QYCenter
 #this should work fine, but the mean temps at the final and starting years could be a little off
 #to prevent reliance on future times, the soft temps could also be calculated just looking at the past QY of temperatures
 
@@ -65,7 +68,7 @@ function calcResiduals(temps, meanTemps)
 end
 
 function heatScores(temps, meanTemps)
-    scores = Matrix{Float32}(undef, TempRows, TempCols)
+    scores = similar(temps)
     residuals = calcResiduals(temps, meanTemps)
     for day in 1:TempRows
         weights = day:-1:1
