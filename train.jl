@@ -12,7 +12,7 @@ struct OnGPU <: RunLocation end
 struct OnCPU <: RunLocation end
 
 moveto(rl, v) = _moveto(rl, v)
-moveto(rl, v...) = moveto.(rl, v...)
+moveto(rl, v...) = moveto.(rl, v)
 _moveto(::Type{OnGPU}, v) = gpu(v)
 _moveto(::Type{OnCPU}, v) = cpu(v)
 

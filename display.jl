@@ -2,6 +2,9 @@ using Plots
 using CSV
 using SparseArrays
 
+#broken by new changes
+#change background color from white
+
 include("testprediction.jl")
 
 #dual display showing predictions for test data d days in advance, as compared to actual data
