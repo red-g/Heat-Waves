@@ -44,11 +44,22 @@ end
 #the idea behind a year mean is to create a less volatile daily mean, taking into account the other days around the target day
 function softTemps(temps)
     ymeans = similar(temps)
-    for day in 1:TempRows
-        qs = max(1, day - DistFromQYCenter)
-        qe = min(TempRows, day + DistFromQYCenter)
-        qtemps = temps[qs:qe, :]
-        ymeans[day, :] = weightedmean.(eachcol(qtemps), QYCenter)
+    midstart, midfinish = QuadYear, TempRows - DistFromQYCenter
+    for day in 1:midstart
+        qe = day + DistFromQYCenter
+        qtemps = eachcol(temps[begin:qe, :])
+        ymeans[day, :] = weightedmean.(qtemps, day)
+    end
+    for day in (midstart+1):midfinish
+        qs = day - DistFromQYCenter
+        qe = day + DistFromQYCenter
+        qtemps = eachcol(temps[qs:qe, :])
+        ymeans[day, :] = weightedmean.(qtemps, QYCenter)
+    end
+    for day in (midfinish+1):TempRows
+        qs = day - DistFromQYCenter
+        qtemps = eachcol(temps[qs:end, :])
+        ymeans[day, :] = weightedmean.(qtemps, QYCenter)
     end
     ymeans
 end
