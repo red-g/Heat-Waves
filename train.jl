@@ -22,8 +22,8 @@ abstract type DescentMode end
 # since predictions are sequential. It may still yield better results, however
 struct StochasticDescent{I<:Integer,E,A} <: DescentMode
     batchsize::I
-    test::E
     train::A
+    test::E
 end
 StochasticDescent(batchsize) = StochasticDescent(batchsize, proportionScores()...)
 moveto(rl, dm::StochasticDescent) = StochasticDescent(dm.batchsize, moveto(rl, dm.test), moveto(rl, dm.train))
@@ -34,8 +34,8 @@ testloss(::StochasticDescent, m) = testloss(m, s.train, scoresToPredictions(s.te
 # Uses all samples each step; more performant than normal because predictions are sequential: 
 # it is only marginally more work to compute the gradients of all instead of some
 struct SmoothDescent{E,A} <: DescentMode
-    test::E
     train::A
+    test::E
 end
 SmoothDescent() = SmoothDescent(proportionScores()...)
 moveto(rl, dm::SmoothDescent) = SmoothDescent(moveto(rl, dm.test), moveto(rl, dm.train))

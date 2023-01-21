@@ -40,6 +40,12 @@ function weightedmean(data, point)
     weights = 1:length(data) .|> p -> 1 / (abs(point - p) + 1)
     sum(data .* weights) / sum(weights)
 end
+#to prevent reliance on future times, the soft temps could also be calculated just looking at the past QY of temperatures
+
+function weightedmean(data)
+    weights = 1 ./ (length(data):-1:1)
+    sum(data .* weights) / sum(weights)
+end
 
 #the idea behind a year mean is to create a less volatile daily mean, taking into account the other days around the target day
 function softTemps(temps)
@@ -63,11 +69,20 @@ function softTemps(temps)
     end
     ymeans
 end
-#error: qs:qe is not always of length QY; QYCenter is therefore not always the right index.
-#when the minimum is too low, the center index should be calculated from qe - qs - DistFromQYCenter
-#when the maximum is too high, the center index is just QYCenter
-#this should work fine, but the mean temps at the final and starting years could be a little off
-#to prevent reliance on future times, the soft temps could also be calculated just looking at the past QY of temperatures
+
+#alternate version of softtemps that only looks at past temperatures, not future ones
+function pastSoftTemps(temps)
+    ymeans = similar(temps)
+    for day in 1:QuadYear
+        qtemps = eachcol(temps[begin:day, :])
+        ymeans[day, :] = weightedmean.(qtemps)
+    end
+    for day in (QuadYear+1):TempRows
+        qtemps = eachcol(temps[(day-QuadYear):day, :])
+        ymeans[day, :] = weightedmean.(qtemps)
+    end
+    ymeans
+end
 
 function calcResiduals(temps, meanTemps)
     residuals = similar(temps)
@@ -89,9 +104,9 @@ function heatScores(temps, meanTemps)
     scores
 end#to only measurement heatwaves: cap every score < 0, sub the mean
 
-const Temps = dateTempMatrixFrom(Columns)
-const SoftTemps = softTemps(Temps)
-const MeanTemps = meanYearTemps(Temps)
-const HeatScores = heatScores(Temps, MeanTemps)
-
-@save "hwscores.bson" HeatScores
+function createHeatScores()
+    temps = dateTempMatrixFrom(Columns)
+    meantemps = (meanYearTemps ∘ softTemps)(temps)
+    HeatScores = heatScores(temps, meantemps)
+    @save "hwscores.bson" HeatScores
+end
