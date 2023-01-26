@@ -1,7 +1,9 @@
 include("train.jl")
 
-Model() = Chain(Dense(CityNum => 512, swish), LSTM(512 => 2048), Dense(2048 => 1024, swish), Dense(1024 => CityNum, σ))
+Model() = Chain(
+    Dense(256 => 128, swish),
+    LSTM(128 => 512),
+    Dense(512 => 256, swish)
+)
 
-const tc = moveto(OnGPU, SmoothDescent(), load(TrainState, "trainstate", Model, ADAM()))
-
-train!(tc, 100)
+const tc = moveto(OnGPU, StochasticDescent(32, Encodings), load(TrainState, "model", Model, ADAM()))

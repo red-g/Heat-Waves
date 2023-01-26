@@ -3,7 +3,6 @@ using CSV
 using CSV.Dates
 using Flux
 using Statistics: mean
-using JET
 
 const Data = CSV.File("daily_temperature_1000_cities_1980_2020.csv")
 const Columns::Vector{Vector{Union{String,Missing}}} = getfield.(Data.columns, :column)

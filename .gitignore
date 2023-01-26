@@ -1,7 +1,9 @@
 actual.gif
 hwscores.bson
 model.bson
+autoencoder.bson
 predicted.gif
 display.jl
 testprediction.jl
 daily_temperature_1000_cities_1980_2020.csv
+encodings.bson

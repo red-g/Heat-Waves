@@ -19,7 +19,7 @@ struct SequentialLoader{D,B}
     batchsize::B
 end
 
-function indicesToRanges(indices)
+function indicesToRanges(indices)#could use preallocated array
     ranges = []
     i₋₁ = 1
     for i in indices
@@ -49,6 +49,16 @@ function proportionScores(trainPortion=0.9)
     train, test
 end
 
-scoresToPredictions(scores, days=1) = zip(scores, Iterators.drop(scores, days))
+function proportionEncodings(trainPortion=0.9)
+    @load "encodings.bson" encodings
+    scores = RowsIter(encodings)
+    cutoff = round(Int, length(scores) * trainPortion)
+    train = scores[1:cutoff]
+    test = scores[(cutoff+1):end]
+    train, test
+end
+#try loading 39 years, one for testing. 
+#this would make the test error less accurate but reflects real world scenarios better
+#there is no need to use a 4 year old model
 
-const CityNum = 1000
+scoresToPredictions(scores, days=1) = zip(scores, Iterators.drop(scores, days))
