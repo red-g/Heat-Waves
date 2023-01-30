@@ -36,15 +36,15 @@ function meanYearTemps(temps)
 end
 
 function weightedmean(data, point)
-    weights = 1:length(data) .|> p -> 1 / (abs(point - p) + 1)
+    weights = 1:length(data) .|> p -> 1 / ((abs(point - p) + 1) .^ 2)
     sum(data .* weights) / sum(weights)
 end
 #to prevent reliance on future times, the soft temps could also be calculated just looking at the past QY of temperatures
 
 function weightedmean(data)
-    weights = 1 ./ (length(data):-1:1)
+    weights = 1 ./ ((length(data):-1:1) .^ 2)#added to weigh heavily against far away temperatures
     sum(data .* weights) / sum(weights)
-end
+end#this places too much emphasis on far away temperatures; leads to cyclical data
 
 #the idea behind a year mean is to create a less volatile daily mean, taking into account the other days around the target day
 function softTemps(temps)
@@ -92,16 +92,24 @@ function calcResiduals(temps, meanTemps)
     residuals
 end
 
+discount(cap, day) = log(1 + 1.0f0 / (cap - day + 1))
+
 function heatScores(temps, meanTemps)
     scores = similar(temps)
     residuals = calcResiduals(temps, meanTemps)
     for day in 1:TempRows
-        weights = day:-1:1
+        weights = discount.(day, 1:day)
         residualsₜ = residuals[1:day, :] |> eachcol
-        scores[day, :] = residualsₜ .|> (col -> col ./ weights) .|> sum .|> σ
-    end#sigmoid may be a mistake: it factors in both hot and cold waves.
+        scores[day, :] = residualsₜ .|> (col -> col .* weights) .|> sum
+    end
     scores
-end#to only measurement heatwaves: cap every score < 0, sub the mean
+end
+#sigmoid may be a mistake: it factors in both hot and cold waves.
+#to only measurement heatwaves: cap every score < 0, sub the mean
+#zscore could be best solution. 
+#Though we may want to do a different one for each city, since they represent different, albeit related, distributions.
+#Also perhaps update dataset to a global map, taken from satellite/other estimates.
+#Cities leave out a lot space where not many people, even though that space still has a big impact on the global climate.
 
 function createHeatScores()
     temps = dateTempMatrixFrom(Columns)
